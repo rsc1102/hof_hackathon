@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadedFilesList } from "../upload-pdf/route";
+import { readUploads, writeUploads } from "@/lib/tempStore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const file = uploadedFilesList.get(id);
+    const uploads = await readUploads();
+    const file = uploads[id];
     if (!file) {
       return NextResponse.json({ error: "File not found." }, { status: 404 });
     }

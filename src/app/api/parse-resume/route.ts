@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadedFilesList } from "../upload-pdf/route";
+import { readUploads, writeUploads } from "@/lib/tempStore";
 import OpenAI from "openai";
 import safePdfParse from "@/lib/safePdfParse";
 
 const { OPENAI_API_KEY } = process.env;
 
-const openai = new OpenAI({
-  apiKey: OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
 
-  if (!id || !uploadedFilesList.has(id)) {
-    return NextResponse.json({ error: "File not found" }, { status: 404 });
+  if (!id) {
+    return NextResponse.json({ error: "Missing file ID" }, { status: 400 });
   }
 
-  const file = uploadedFilesList.get(id);
+  const uploads = await readUploads();
+  const file = uploads[id];
 
   if (!file || !file.buffer) {
-    console.error("❌ File buffer missing for ID:", id);
-    return NextResponse.json({ error: "File data missing" }, { status: 400 });
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
   if (file.parsedData) {
@@ -30,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rawText = await safePdfParse(file.buffer);
+    const rawText = await safePdfParse(Buffer.from(file.buffer, "base64"));
 
     const prompt = `
 You're a resume parser. Based on the PDF text below, extract the resume info into a structured JSON format like:
@@ -76,7 +74,9 @@ ${rawText}
       );
     }
 
-    file.parsedData = parsed;
+    uploads[id].parsedData = parsed;
+    await writeUploads(uploads);
+
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("❌ Unexpected error in /api/parse-resume:", err);

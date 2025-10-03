@@ -37,42 +37,12 @@ export default function ResumeTemplatePage() {
     if (id) fetchMutations();
   }, [id]);
 
-  const handleDownload = async () => {
-    if (!previewRef.current || selected === null) return;
-
-    try {
-      const html2pdf = (await import("html2pdf.js")).default;
-
-      const opt = {
-        margin: 0.3,
-        filename: `resume_${id}_v${selected + 1}.pdf`,
-        image: { type: "jpeg", quality: 1 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-      };
-
-      await html2pdf().set(opt).from(previewRef.current).save();
-    } catch (err) {
-      console.error("❌ PDF generation failed, fallback to print:", err);
-      alert("PDF generation failed. Opening print dialog...");
-
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write("<html><head><title>Resume</title>");
-        printWindow.document.write(`<style>
-          body { font-family: sans-serif; padding: 2rem; }
-          h1, h2 { margin: 0.5rem 0; }
-          ul, li { margin: 0; padding: 0; }
-          .inline-skills li { display: inline-block; margin-right: 8px; background: #eee; padding: 2px 6px; border-radius: 4px; }
-        </style>`);
-        printWindow.document.write("</head><body>");
-        printWindow.document.write(previewRef.current.innerHTML);
-        printWindow.document.write("</body></html>");
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-      }
-    }
+  const handleDownload = () => {
+    if (selected === null) return;
+    window.open(
+      `/api/generate-resume-pdf?id=${id}&version=${selected}`,
+      "_blank"
+    );
   };
 
   const renderHTMLPreview = (resume: ResumeVersion) => {

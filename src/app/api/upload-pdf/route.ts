@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-
-type FileData = {
-  buffer: Buffer;
-  name: string;
-  mime: string;
-  parsedData?: any;
-  mutatedData?: any[];
-  templates?: {
-    versionIndex: number;
-    html: string;
-    createdAt: string;
-  }[];
-};
-
-const uploadedFiles = new Map<string, FileData>();
-export const uploadedFilesList = uploadedFiles;
+import { readUploads, writeUploads, FileData } from "@/lib/tempStore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,25 +12,21 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const base64 = buffer.toString("base64");
     const id = randomUUID();
 
-    uploadedFiles.set(id, {
-      buffer,
+    const data = await readUploads();
+    data[id] = {
+      buffer: base64,
       name: file.name,
       mime: file.type || "application/pdf",
-    });
-
-    console.log(
-      `📄 Uploaded: ${file.name} (${buffer.byteLength} bytes) [id=${id}]`
-    );
+    };
+    await writeUploads(data);
 
     return NextResponse.json({ success: true, id, fileName: file.name });
   } catch (error) {
-    console.error("❌ Error uploading PDF:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Upload error:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
 
@@ -54,25 +35,24 @@ export async function GET(req: NextRequest) {
   const id = searchParams.get("id");
   const list = searchParams.get("list");
 
-  // 🆕 Return list of uploaded files
+  const data = await readUploads();
+
   if (list === "true") {
-    const allFiles = Array.from(uploadedFiles.entries()).map(([id, file]) => ({
+    const list = Object.entries(data).map(([id, file]) => ({
       id,
       name: file.name,
       parsed: !!file.parsedData,
       mutated: !!file.mutatedData?.length,
     }));
-    return NextResponse.json(allFiles);
+    return NextResponse.json(list);
   }
 
-  // ✅ Return single file by ID
-  if (!id || !uploadedFiles.has(id)) {
+  if (!id || !data[id]) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const file = uploadedFiles.get(id)!;
-
-  return new NextResponse(file.buffer, {
+  const file = data[id];
+  return new NextResponse(Buffer.from(file.buffer, "base64"), {
     status: 200,
     headers: {
       "Content-Type": file.mime,
@@ -85,12 +65,14 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
 
-  if (!id || !uploadedFiles.has(id)) {
+  const data = await readUploads();
+
+  if (!id || !data[id]) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  uploadedFiles.delete(id);
-  console.log(`🗑️ Deleted file with id: ${id}`);
+  delete data[id];
+  await writeUploads(data);
 
   return NextResponse.json({ success: true });
 }
